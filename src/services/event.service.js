@@ -153,7 +153,15 @@ class EventService {
     }
 
     async getEventTime(id) {
-        // TODO
+        const eventInfo = await EventRepo.getEventStatusAndTiming(id);
+        if (!eventInfo) {
+            throw new Error("Event not found");
+        }
+
+        return {
+            start_time: eventInfo.event_start_date,
+            end_time: eventInfo.event_end_date,
+        };
     }
 
     async reportEventIssue(student_id, event_id, reason, details) {
