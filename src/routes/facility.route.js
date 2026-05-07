@@ -1,11 +1,12 @@
 import express from 'express';
-import { getFacilities, reportFacilityIssue } from '../controllers/facility.controller.js';
+import { getFacilities, reportFacilityIssue, reserveFacility } from '../controllers/facility.controller.js';
+import { verifyRole } from '../middlewares/auth.middleware.js';
 
 const router = express.Router();
 
 
 router.get('/', getFacilities);
-// router.post('/:id/reserve', );
+router.post('/:id/reserve', verifyRole(['student', 'club_manager']), reserveFacility);
 // router.post('/:id/checkin', );
 router.post('/report', reportFacilityIssue);
 

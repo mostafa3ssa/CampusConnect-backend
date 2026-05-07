@@ -31,12 +31,13 @@ export class FacilityRepo{
             conn = await getConnection();
             const rows = await conn.query(`
                 SELECT 
-                    id As facility_id,
+                    facility_id,
                     name,
                     type,
                     location_description,
                     min_capacity,
-                    max_capacity
+                    max_capacity,
+                    status
                 FROM facilities
             `);
             
@@ -45,6 +46,101 @@ export class FacilityRepo{
             console.log(error);
             throw new Error('Error getting facilities: ' + error.message);
         }finally {
+            if (conn) conn.release();
+        }
+    }
+
+    async getFacilityById(facilityId) {
+        let conn;
+        try {
+            conn = await getConnection();
+            const rows = await conn.query(
+                `
+                SELECT
+                    facility_id,
+                    name,
+                    type,
+                    location_description,
+                    min_capacity,
+                    max_capacity,
+                    status
+                FROM facilities
+                WHERE facility_id = ?
+                `,
+                [facilityId]
+            );
+
+            return rows[0];
+        } catch (error) {
+            console.log(error);
+            throw new Error('Error getting facility: ' + error.message);
+        } finally {
+            if (conn) conn.release();
+        }
+    }
+
+    async hasOverlappingReservation(facilityId, startTime, endTime) {
+        let conn;
+        try {
+            conn = await getConnection();
+            const rows = await conn.query(
+                `
+                SELECT 1
+                FROM std_reserve_facility
+                WHERE facility_id = ?
+                    AND status NOT IN ('cancelled', 'completed')
+                    AND reservation_start_date < ?
+                    AND reservation_end_date > ?
+                LIMIT 1
+                `,
+                [facilityId, endTime, startTime]
+            );
+
+            return rows.length > 0;
+        } catch (error) {
+            console.log(error);
+            throw new Error('Error checking facility reservation overlap: ' + error.message);
+        } finally {
+            if (conn) conn.release();
+        }
+    }
+
+    async reserveFacility(teamIds, facilityId, startTime, endTime, status = 'confirmed') {
+        let conn;
+        try {
+            conn = await getConnection();
+            await conn.beginTransaction();
+
+            for (const studentId of teamIds) {
+                await conn.query(
+                    `
+                    INSERT INTO std_reserve_facility (
+                        student_id,
+                        facility_id,
+                        reservation_start_date,
+                        reservation_end_date,
+                        status
+                    ) VALUES (?, ?, ?, ?, ?)
+                    `,
+                    [studentId, facilityId, startTime, endTime, status]
+                );
+            }
+
+            await conn.commit();
+            return {
+                facility_id: facilityId,
+                team_size: teamIds.length,
+                start_time: startTime,
+                end_time: endTime,
+                status,
+            };
+        } catch (error) {
+            if (conn) {
+                await conn.rollback();
+            }
+            console.log(error);
+            throw new Error('Error reserving facility: ' + error.message);
+        } finally {
             if (conn) conn.release();
         }
     }

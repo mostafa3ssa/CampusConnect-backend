@@ -35,6 +35,80 @@ export const getFacilities = async (req, res) => {
     }
 };
 
+export const reserveFacility = async (req, res) => {
+    try {
+        const facilityId = Number(req.params.id);
+        const { start_time, end_time, team_ids } = req.body;
+        const currentUserId = req.user.id;
+
+        if (!Number.isInteger(facilityId) || facilityId <= 0) {
+            return res.status(400).json({ message: 'Invalid facility ID' });
+        }
+
+        if (!start_time || !end_time || !Array.isArray(team_ids) || team_ids.length === 0) {
+            return res.status(400).json({
+                message: 'Missing required fields',
+                details: 'start_time, end_time, and a non-empty team_ids array are required.'
+            });
+        }
+
+        const startDate = new Date(start_time);
+        const endDate = new Date(end_time);
+
+        if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+            return res.status(400).json({ message: 'start_time and end_time must be valid datetime values' });
+        }
+
+        if (endDate <= startDate) {
+            return res.status(400).json({ message: 'end_time must be after start_time' });
+        }
+
+        const reservation = await FacilityService.reserveFacility({
+            facilityId,
+            startTime: start_time,
+            endTime: end_time,
+            teamIds: team_ids,
+            currentUserId,
+        });
+
+        await saveLog({
+            ip_address: req.ip,
+            user_type: req.user.role,
+            record_id: facilityId.toString(),
+            edited_table: 'std_reserve_facility',
+            action: 'reserve',
+            changed_by: currentUserId.toString()
+        });
+
+        return res.status(201).json({
+            message: 'Facility reserved successfully',
+            reservation,
+        });
+    } catch (err) {
+        if (err.message.includes('Facility not found')) {
+            return res.status(404).json({ message: 'Facility not found' });
+        }
+
+        if (err.message.includes('already reserved')) {
+            return res.status(409).json({ message: err.message });
+        }
+
+        if (
+            err.message.includes('Current user must be included') ||
+            err.message.includes('Duplicate team members') ||
+            err.message.includes('All team members must have valid IDs') ||
+            err.message.includes('All team_ids must belong to active student users') ||
+            err.message.includes('minimum capacity') ||
+            err.message.includes('maximum capacity') ||
+            err.message.includes('not available for reservation')
+        ) {
+            return res.status(400).json({ message: err.message });
+        }
+
+        return res.status(500).json({ message: 'Error reserving facility: ' + err.message });
+    }
+};
+
 export const reportFacilityIssue = async (req, res) => {
     try {
         const { facility_id, reason, details } = req.body;

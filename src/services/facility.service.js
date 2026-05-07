@@ -1,7 +1,8 @@
 import FacilityRepo from "../repositories/facility.repository.js";
+import userRepository from "../repositories/user.repository.js";
 
 class FacilityService {
-    STATUSES = ['available', 'unavailable', 'under_maintenance'];
+    STATUSES = ['available', 'closed', 'under_maintenance'];
 
     /**
      * @param {Object} facilityDetails
@@ -31,6 +32,65 @@ class FacilityService {
         try {
             const result = await FacilityRepo.getFacilities();
             return result;
+        } catch (error) {
+            throw new Error('Error in FacilityService: ' + error.message);
+        }
+    }
+
+    async reserveFacility({ facilityId, startTime, endTime, teamIds, currentUserId }) {
+        try {
+            const uniqueTeamIds = [...new Set(teamIds.map((id) => Number(id)))];
+
+            if (uniqueTeamIds.length !== teamIds.length) {
+                throw new Error('Duplicate team members are not allowed');
+            }
+
+            if (uniqueTeamIds.some((id) => !Number.isInteger(id) || id <= 0)) {
+                throw new Error('All team members must have valid IDs');
+            }
+
+            if (!uniqueTeamIds.includes(Number(currentUserId))) {
+                throw new Error('Current user must be included in team_ids');
+            }
+
+            const facility = await FacilityRepo.getFacilityById(facilityId);
+            if (!facility) {
+                throw new Error('Facility not found');
+            }
+
+            if (facility.status !== 'available') {
+                throw new Error('Facility is not available for reservation');
+            }
+
+            if (uniqueTeamIds.length < facility.min_capacity) {
+                throw new Error('Team size is below facility minimum capacity');
+            }
+
+            if (uniqueTeamIds.length > facility.max_capacity) {
+                throw new Error('Team size exceeds facility maximum capacity');
+            }
+
+            const validStudents = await userRepository.getActiveStudentsByIds(uniqueTeamIds);
+            if (validStudents.length !== uniqueTeamIds.length) {
+                throw new Error('All team_ids must belong to active student users');
+            }
+
+            const hasConflict = await FacilityRepo.hasOverlappingReservation(
+                facilityId,
+                startTime,
+                endTime
+            );
+
+            if (hasConflict) {
+                throw new Error('Facility is already reserved for the selected time range');
+            }
+
+            return await FacilityRepo.reserveFacility(
+                uniqueTeamIds,
+                facilityId,
+                startTime,
+                endTime
+            );
         } catch (error) {
             throw new Error('Error in FacilityService: ' + error.message);
         }

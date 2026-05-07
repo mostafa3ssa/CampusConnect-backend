@@ -180,6 +180,34 @@ class UserRepo {
             if (conn) conn.release();
         }
     }
+
+    async getActiveStudentsByIds(studentIds) {
+        if (!studentIds || studentIds.length === 0) {
+            return [];
+        }
+
+        let conn;
+        try {
+            conn = await getConnection();
+            const placeholders = studentIds.map(() => "?").join(", ");
+            const students = await conn.query(
+                `
+                SELECT s.student_id
+                FROM students s
+                JOIN users u ON s.student_id = u.user_id
+                WHERE s.student_id IN (${placeholders})
+                    AND u.is_active = TRUE
+                `,
+                studentIds
+            );
+
+            return students;
+        } catch (err) {
+            throw err;
+        } finally {
+            if (conn) conn.release();
+        }
+    }
 }
 
 
